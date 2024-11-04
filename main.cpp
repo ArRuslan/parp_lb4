@@ -3,22 +3,26 @@
 #include <vips/vips8>
 #include <omp.h>
 
-std::vector<uint8_t> mandelbrot(const std::complex<double>& c, uint16_t limit) {
+void mandelbrot(const std::complex<double>& c, uint16_t limit, uint8_t* out) {
     std::complex<double> z = {0, 0};
     int iter = 0;
-    while (std::norm(z) <= 4 && iter < limit) {
+    while (iter < limit) {
+        double r = z.real();
+        double i = z.imag();
+        if((r * r + i * i) > 4)
+            break;
         z = z * z + c;
         iter++;
     }
 
-    if (iter == limit)
-        return {0, 0, 0};
+    if (iter == limit) {
+        out[0] = out[1] = out[2] = 0;
+        return;
+    }
 
-    return {
-        static_cast<uint8_t>((255 * iter) % 256),
-        static_cast<uint8_t>((255 * (iter % 64)) % 256),
-        static_cast<uint8_t>((255 * (iter / 4)) % 256),
-    };
+    out[0] = (255 * iter) % 256;
+    out[1] = (255 * (iter % 64)) % 256;
+    out[2] = (255 * (iter / 4)) % 256;
 }
 
 bool saveImage(const std::vector<std::vector<std::vector<uint8_t>>>& img, const std::string& filename) {
@@ -56,8 +60,8 @@ bool saveImage(const std::vector<std::vector<std::vector<uint8_t>>>& img, const 
 }
 
 int main() {
-    const int WIDTH = 4096 * 1.5;
-    const int HEIGHT = 2160 * 1.5;
+    const int WIDTH = 4096 * 1/*.5*/;
+    const int HEIGHT = 2160 * 1/*.5*/;
     const int LIMIT = 512;
     const double ZOOM = 4.0;
 
@@ -73,13 +77,13 @@ int main() {
                 (j - HEIGHT / 2.0) * ZOOM / HEIGHT
             );
 
-            img[j][i] = mandelbrot(c, LIMIT);
+            mandelbrot(c, LIMIT, &*img[j][i].begin());
         }
     }
     double end_time = omp_get_wtime();
     std::cout << "Time (seq): " << end_time - start_time << " seconds\n";
 
-    start_time = omp_get_wtime();
+    /*start_time = omp_get_wtime();
     #pragma omp parallel for num_threads(8) schedule(dynamic)
     for (int i = 0; i < WIDTH; i++) {
         for (int j = 0; j < HEIGHT; j++) {
@@ -88,17 +92,17 @@ int main() {
                 (j - HEIGHT / 2.0) * ZOOM / HEIGHT
             );
 
-            img[j][i] = mandelbrot(c, 512);
+            mandelbrot(c, LIMIT, &*img[j][i].begin());
         }
     }
     end_time = omp_get_wtime();
-    std::cout << "Time (par): " << end_time - start_time << " seconds\n";
+    std::cout << "Time (par): " << end_time - start_time << " seconds\n";*/
 
-    if (saveImage(img, "output.png")) {
+    /*if (saveImage(img, "output.png")) {
         std::cout << "PNG saved successfully." << std::endl;
     } else {
         std::cerr << "Failed to save PNG." << std::endl;
-    }
+    }*/
 
     return 0;
 }
