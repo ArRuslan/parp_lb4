@@ -12,9 +12,9 @@ void mandelbrot(const double cr, const double ci, uint16_t limit, uint8_t* out) 
         if((zrs + zis) > 4)
             break;
 
-        const double tmp = 2 * zr * zi;
+        const double tmp = zr * zi;
         zr = zrs - zis + cr;
-        zi = tmp + ci;
+        zi = tmp + tmp + ci;
         iter++;
     }
 
