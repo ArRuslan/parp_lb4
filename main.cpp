@@ -3,15 +3,18 @@
 #include <vips/vips8>
 #include <omp.h>
 
-void mandelbrot(const std::complex<double>& c, uint16_t limit, uint8_t* out) {
-    std::complex<double> z = {0, 0};
+void mandelbrot(const double cr, const double ci, uint16_t limit, uint8_t* out) {
+    double zr = 0, zi = 0;
     int iter = 0;
     while (iter < limit) {
-        double r = z.real();
-        double i = z.imag();
-        if((r * r + i * i) > 4)
+        const double zrs = zr * zr;
+        const double zis = zi * zi;
+        if((zrs + zis) > 4)
             break;
-        z = z * z + c;
+
+        const double tmp = 2 * zr * zi;
+        zr = zrs - zis + cr;
+        zi = tmp + ci;
         iter++;
     }
 
@@ -25,84 +28,69 @@ void mandelbrot(const std::complex<double>& c, uint16_t limit, uint8_t* out) {
     out[2] = (255 * (iter / 4)) % 256;
 }
 
-bool saveImage(const std::vector<std::vector<std::vector<uint8_t>>>& img, const std::string& filename) {
+bool saveImage(const uint8_t* data, const int32_t width, const int32_t height, const std::string& filename) {
     if (VIPS_INIT("mandelbrot"))
         return false;
 
-    int height = img.size();
-    int width = img[0].size();
-    int channels = 3;
-
-    std::vector<uint8_t> data;
-    data.reserve(width * height * channels);
-    for (const auto& row : img) {
-        for (const auto& pixel : row) {
-            data.insert(data.end(), pixel.begin(), pixel.end());
-        }
-    }
-
-    VipsImage* image = vips_image_new_from_memory(data.data(), data.size(), width, height, channels, VIPS_FORMAT_UCHAR);
+    constexpr int channels = 3;
+    VipsImage* image = vips_image_new_from_memory(data, width * height * channels, width, height, channels, VIPS_FORMAT_UCHAR);
     if (!image) {
         vips_error_exit(nullptr);
         return false;
     }
 
-    if (vips_pngsave(image, filename.c_str(), nullptr)) {
-        g_object_unref(image);
-        vips_shutdown();
-        return false;
-    }
-
+    const bool imageSaved = vips_pngsave(image, filename.c_str(), nullptr) == 0;
     g_object_unref(image);
     vips_shutdown();
-
-    return true;
+    return imageSaved;
 }
 
+// single-thread opt: 53 -> 44 -> 32 -> (somehow) 12  (seconds)
+// multi-thread opt:  10 -> 7  -> 4  -> (somehow) 2   (seconds)
 int main() {
-    const int WIDTH = 4096 * 1/*.5*/;
-    const int HEIGHT = 2160 * 1/*.5*/;
+    const int WIDTH = 4096 * 1.5;
+    const int HEIGHT = 2160 * 1.5;
     const int LIMIT = 512;
     const double ZOOM = 4.0;
 
-    std::vector img(HEIGHT, std::vector(WIDTH, std::vector<uint8_t>(3, 0)));
-
+    auto* img = (uint8_t*)malloc(HEIGHT * WIDTH * 3);
     omp_set_num_threads(omp_get_max_threads());
 
     double start_time = omp_get_wtime();
-    for (int i = 0; i < WIDTH; i++) {
-        for (int j = 0; j < HEIGHT; j++) {
-            std::complex<double> c(
-                (i - WIDTH / 2.0) * ZOOM / WIDTH,
-                (j - HEIGHT / 2.0) * ZOOM / HEIGHT
-            );
-
-            mandelbrot(c, LIMIT, &*img[j][i].begin());
+    for (int j = 0; j < HEIGHT; j++) {
+        uint8_t* row_start = img + j * WIDTH * 3;
+        int offset = 0;
+        for (int i = 0; i < WIDTH; i++) {
+            const double cr = (i - WIDTH / 2.0) * ZOOM / WIDTH;
+            const double ci = (j - HEIGHT / 2.0) * ZOOM / HEIGHT;
+            mandelbrot(cr, ci, LIMIT, row_start + offset);
+            offset += 3;
         }
     }
     double end_time = omp_get_wtime();
     std::cout << "Time (seq): " << end_time - start_time << " seconds\n";
 
-    /*start_time = omp_get_wtime();
+    start_time = omp_get_wtime();
     #pragma omp parallel for num_threads(8) schedule(dynamic)
-    for (int i = 0; i < WIDTH; i++) {
-        for (int j = 0; j < HEIGHT; j++) {
-            std::complex<double> c(
-                (i - WIDTH / 2.0) * ZOOM / WIDTH,
-                (j - HEIGHT / 2.0) * ZOOM / HEIGHT
-            );
-
-            mandelbrot(c, LIMIT, &*img[j][i].begin());
+    for (int j = 0; j < HEIGHT; j++) {
+        uint8_t* row_start = img + j * WIDTH * 3;
+        int offset = 0;
+        for (int i = 0; i < WIDTH; i++) {
+            const double cr = (i - WIDTH / 2.0) * ZOOM / WIDTH;
+            const double ci = (j - HEIGHT / 2.0) * ZOOM / HEIGHT;
+            mandelbrot(cr, ci, LIMIT, row_start + offset);
+            offset += 3;
         }
     }
     end_time = omp_get_wtime();
-    std::cout << "Time (par): " << end_time - start_time << " seconds\n";*/
+    std::cout << "Time (par): " << end_time - start_time << " seconds\n";
 
-    /*if (saveImage(img, "output.png")) {
+    if (saveImage(img, WIDTH, HEIGHT, "output.png")) {
         std::cout << "PNG saved successfully." << std::endl;
     } else {
         std::cerr << "Failed to save PNG." << std::endl;
-    }*/
+    }
 
+    free(img);
     return 0;
 }
