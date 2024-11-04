@@ -6,7 +6,7 @@
 std::vector<uint8_t> mandelbrot(const std::complex<double>& c, uint16_t limit) {
     std::complex<double> z = {0, 0};
     int iter = 0;
-    while (std::norm(z) <= 2 && iter < limit) {
+    while (std::norm(z) <= 4 && iter < limit) {
         z = z * z + c;
         iter++;
     }
@@ -80,7 +80,7 @@ int main() {
     std::cout << "Time (seq): " << end_time - start_time << " seconds\n";
 
     start_time = omp_get_wtime();
-    #pragma omp parallel for collapse(2)
+    #pragma omp parallel for num_threads(8) schedule(dynamic)
     for (int i = 0; i < WIDTH; i++) {
         for (int j = 0; j < HEIGHT; j++) {
             std::complex<double> c(
